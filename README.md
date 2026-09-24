@@ -84,8 +84,10 @@ A release does **not** automatically make a catalog entry installable. After the
 
 ## Current plugins
 
+- **Google AI Studio** (`dev.kinetix.ai-studio`) — API-key provider setup and authenticated native Gemini model discovery.
 - **Google Antigravity** (`dev.kinetix.antigravity-oauth`) — OAuth credential strategy, account model discovery, and `v1internal` provider adapter.
 - **Claude Code OAuth** (`dev.kinetix.claude-code-oauth`) — Anthropic Claude Code PKCE OAuth, token exchange, and refresh-token rotation.
+- **B.AI** (`dev.kinetix.b-ai`) — API-key provider setup, live OpenAI-compatible model discovery, and provider-specific metadata enrichment.
 - **OpenCode Free** (`dev.kinetix.opencode-free`) — OpenCode Free no-auth provider adapter and dynamic model discovery.
 
 ## Compatibility

@@ -1,0 +1,15 @@
+{
+  "mimo-v2.6-flash-free": {
+    "display_name": "MiMo-V2.6-Flash Free",
+    "context_window": 1000000,
+    "max_output_tokens": 131072,
+    "reasoning": {
+      "supported": true
+    },
+    "vision": true,
+    "tools": true,
+    "structured_output": true,
+    "transport": "openai",
+    "source": "https://mimo.mi.com/models/en-US/mimo-v2.6-flash"
+  }
+}

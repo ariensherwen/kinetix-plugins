@@ -1,0 +1,26 @@
+{
+  "DeepSeek-V4.1-Flash": {
+    "display_name": "DeepSeek V4.1 Flash",
+    "context_window": 1000000,
+    "max_output_tokens": 384000,
+    "reasoning": {
+      "supported": true,
+      "mode": "level",
+      "levels": ["low", "high", "max"],
+      "default": "high",
+      "can_disable": true
+    },
+    "vision": true,
+    "tools": true,
+    "structured_output": true,
+    "source": "https://docs.b.ai/llmservice/models/deepseek-v4-1-flash/"
+  },
+  "DeepSeek-V4-Flash": {
+    "canonical": "DeepSeek-V4.1-Flash",
+    "source": "https://docs.b.ai/llmservice/models/deepseek-v4-flash/"
+  },
+  "DeepSeek-V4-Flash-Vision-Exp": {
+    "canonical": "DeepSeek-V4.1-Flash",
+    "source": "https://docs.b.ai/llmservice/models/deepseek-v4-flash-vision-exp/"
+  }
+}

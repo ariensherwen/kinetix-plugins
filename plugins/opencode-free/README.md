@@ -32,6 +32,12 @@ OpenCode returns the standard OpenAI list shape:
 
 The plugin never treats the full endpoint catalog as free. Only explicitly free ids are returned.
 
+## Provider-specific model metadata
+
+`models.json` enriches only models returned by the live OpenCode catalog. It does not create availability. This keeps removed SKUs out while allowing OpenCode-specific wrapper IDs such as `mimo-v2.6-flash-free` to carry sourced context/output limits and normalized reasoning, vision, tool, and structured-output capabilities.
+
+Unknown metadata stays unknown; the catalog is not used as a fallback availability list.
+
 ## Build
 
 ```sh

@@ -9,7 +9,10 @@
 use kinetix::plugin::types::*;
 use kinetix_plugin_sdk::{
     export, exports, kinetix,
-    model_capabilities::{ModelCapabilitiesV1, TransportCapability},
+    model_capabilities::{
+        ModelCapabilitiesV1, ReasoningCapability, SupportCapability, TransportCapability,
+        VisionCapability,
+    },
 };
 use serde_json::Value;
 
@@ -18,6 +21,7 @@ mod adapter;
 const DEFAULT_BASE_URL: &str = "https://opencode.ai";
 const DEFAULT_MODELS_PATH: &str = "/zen/v1/models";
 const CLIENT_HEADER_VALUE: &str = "desktop";
+const MODEL_CATALOG: &str = include_str!("../models.json");
 
 const KNOWN_FREE_IDS: &[&str] = &[
     "big-pickle",
@@ -79,9 +83,41 @@ fn target_format(id: &str) -> &'static str {
     }
 }
 
-fn normalized_capabilities(id: &str) -> Result<String, PluginError> {
+fn catalog_entry(id: &str) -> Option<Value> {
+    let catalog: Value = serde_json::from_str(MODEL_CATALOG).ok()?;
+    catalog.get(id).cloned()
+}
+
+fn reasoning_from_catalog(entry: &Value) -> Option<ReasoningCapability> {
+    let raw = entry.get("reasoning")?;
+    let supported = raw.get("supported")?.as_bool()?;
+    let mut reasoning = if supported {
+        ReasoningCapability::supported_unknown()
+    } else {
+        ReasoningCapability::unsupported()
+    };
+    reasoning.can_disable = raw.get("can_disable").and_then(Value::as_bool);
+    Some(reasoning)
+}
+
+fn normalized_capabilities(id: &str, entry: Option<&Value>) -> Result<String, PluginError> {
     let mut capabilities = ModelCapabilitiesV1::default();
     capabilities.transport = Some(TransportCapability::new(target_format(id)));
+    if let Some(entry) = entry {
+        capabilities.reasoning = reasoning_from_catalog(entry);
+        capabilities.tools = entry
+            .get("tools")
+            .and_then(Value::as_bool)
+            .map(SupportCapability::new);
+        capabilities.vision = entry
+            .get("vision")
+            .and_then(Value::as_bool)
+            .map(VisionCapability::new);
+        capabilities.structured_output = entry
+            .get("structured_output")
+            .and_then(Value::as_bool)
+            .map(SupportCapability::new);
+    }
     capabilities.to_json().map_err(|error| {
         discovery_error(
             "plugin_internal",
@@ -105,25 +141,48 @@ fn parse_model_list(value: &Value) -> Result<Vec<DiscoveredModel>, PluginError> 
             continue;
         }
 
+        let catalog = catalog_entry(id);
         let display_name = item
             .get("name")
             .and_then(Value::as_str)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(id)
-            .to_string();
-        let capabilities_json = normalized_capabilities(id)?;
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .or_else(|| {
+                catalog
+                    .as_ref()
+                    .and_then(|entry| entry.get("display_name"))
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
+            })
+            .or_else(|| Some(id.to_string()));
+        let context_window = item
+            .get("context_length")
+            .or_else(|| item.get("contextWindow"))
+            .and_then(Value::as_u64)
+            .or_else(|| {
+                catalog
+                    .as_ref()
+                    .and_then(|entry| entry.get("context_window"))
+                    .and_then(Value::as_u64)
+            });
+        let max_output_tokens = item
+            .get("max_output_tokens")
+            .or_else(|| item.get("maxOutputTokens"))
+            .and_then(Value::as_u64)
+            .or_else(|| {
+                catalog
+                    .as_ref()
+                    .and_then(|entry| entry.get("max_output_tokens"))
+                    .and_then(Value::as_u64)
+            });
+        let capabilities_json = normalized_capabilities(id, catalog.as_ref())?;
 
         models.push(DiscoveredModel {
             id: id.to_string(),
-            display_name: Some(display_name),
-            context_window: item
-                .get("context_length")
-                .or_else(|| item.get("contextWindow"))
-                .and_then(Value::as_u64),
-            max_output_tokens: item
-                .get("max_output_tokens")
-                .or_else(|| item.get("maxOutputTokens"))
-                .and_then(Value::as_u64),
+            display_name,
+            context_window,
+            max_output_tokens,
             capabilities_json: Some(capabilities_json),
             raw_metadata: serde_json::to_string(item).ok(),
         });
@@ -345,6 +404,44 @@ mod tests {
                 "muse-spark-1.3-contributor-free"
             ]
         );
+    }
+
+    #[test]
+    fn enriches_mimo_v26_flash_free_without_creating_availability() {
+        let value = serde_json::json!({
+            "data": [
+                {"id": "big-pickle", "object": "model"},
+                {"id": "mimo-v2.6-flash-free", "object": "model"}
+            ]
+        });
+
+        let models = parse_model_list(&value).unwrap();
+        let mimo = models
+            .iter()
+            .find(|model| model.id == "mimo-v2.6-flash-free")
+            .unwrap();
+        assert_eq!(mimo.display_name.as_deref(), Some("MiMo-V2.6-Flash Free"));
+        assert_eq!(mimo.context_window, Some(1_000_000));
+        assert_eq!(mimo.max_output_tokens, Some(131_072));
+        let caps =
+            ModelCapabilitiesV1::from_json(mimo.capabilities_json.as_deref().unwrap()).unwrap();
+        assert_eq!(
+            caps.transport.as_ref().map(|value| value.format.as_str()),
+            Some("openai")
+        );
+        assert_eq!(caps.reasoning.as_ref().map(|value| value.supported), Some(true));
+        assert_eq!(caps.vision.as_ref().map(|value| value.input), Some(true));
+        assert_eq!(caps.tools.as_ref().map(|value| value.supported), Some(true));
+        assert_eq!(
+            caps.structured_output.as_ref().map(|value| value.supported),
+            Some(true)
+        );
+
+        let without_mimo =
+            parse_model_list(&serde_json::json!({"data": [{"id": "big-pickle"}]})).unwrap();
+        assert!(!without_mimo
+            .iter()
+            .any(|model| model.id == "mimo-v2.6-flash-free"));
     }
 
     #[test]
